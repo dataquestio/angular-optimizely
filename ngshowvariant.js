@@ -1,67 +1,115 @@
 'use strict';
 
-angular.module('ngshowvariant',[]);
-
-/*
- * angular-markdown-directive v0.1.0
- * (c) 2014 Matt Van Veenendaal
- * License: MIT
- */
+angular.module('ngshowvariant', []);
 
 /**
  * A directive that shows elements only when the given variation state is in effect
  * Requires a window variable to be set using optimizely.
- * <code>
- *    <div ng-show-variant="alphabet">variant alphabet is running</div>
- *    <div ng-show-variant="cactus">variant cactus is running</div>
- *    <div ng-show-variant="cactus,alphabet">variant cactus or alphabet is running</div>
- *    <div ng-show-variant="none">No variant is enabled</div>
- *    <div ng-show-variant="cactus,none">either variant cactus or no variant is enabled</div>
- * </code>
+ * <div variant-switch="experiment_name">
+ *    <div variant-switch-default>variant default is running</div>
+ *    <div variant-switch-when="cactus">variant cactus is running</div>
+ *    <div variant-switch-when="variant_name">variant variant_name is running</div>
+ * </div>
  */
 
- /**
+/**
  * In optimizely, add this to 'custom javascript'
  *
- *
- * //set which variant you would like
- * window.variant= "optmizely1";
- *
  * //tell angular the variant has changed.
- * var scope = angular.element(document.getElementById('main')).injector().get('$rootScope');
+ * var scope = angular.element(document.getElementsByTagName("body")[0]).injector().get('$rootScope');
  *
  * scope.$apply( function() {
- *   scope.$broadcast('$updateVariant');
+ *   scope.$broadcast('$updateVariant', {variant: "variant_name", "experiment": 'experiment_name'});
  * });
  */
- angular.module('ngshowvariant').directive('ngShowVariant', ['$rootScope', function($rootScope) {
-    var variant = window.variant;
-    if (!variant) {
-      variant = 'none';
-    }
-    function inList(needle, list) {
-      var res = false;
-      angular.forEach(list, function(x) {
-        if( x === needle ) {
-          res = true;
-          return true;
-        }
-        return false;
-      });
-      return res;
-    }
-    return {
-      restrict: 'A',
-      compile: function(el, attr) {
-        var expectingVariant = (attr.ngShowVariant||'').split(',');
-        function fn(newVariant) {
-          variant = newVariant;
-          var hide = !inList(newVariant, expectingVariant);
-          el.toggleClass('hide', hide);
-        }
-        fn(variant);
+angular.module('ngshowvariant').directive('variantSwitch', function ($animate, $rootScope, $window) {
+        return {
+            require: 'variantSwitch',
 
-        $rootScope.$on('$updateVariant', function() { fn(window.variant); });
-      }
-    };
-  }]);
+            // asks for $scope to fool the BC controller module
+            controller: ['$scope', function ngSwitchController() {
+                this.cases = {};
+            }],
+            link: function (scope, element, attr, ngSwitchController) {
+                var experimentName = attr.variantSwitch || attr.on;
+                var watchExpr = "$window.variants['" + experimentName + "']";
+                var selectedTranscludes = [],
+                    selectedElements = [],
+                    previousLeaveAnimations = [],
+                    selectedScopes = [];
+
+                var spliceFactory = function (array, index) {
+                    return function () {
+                        array.splice(index, 1);
+                    };
+                };
+
+                var ngSwitchWatchAction = function(value) {
+                    var i, ii;
+                    for (i = 0, ii = previousLeaveAnimations.length; i < ii; ++i) {
+                        $animate.cancel(previousLeaveAnimations[i]);
+                    }
+                    previousLeaveAnimations.length = 0;
+
+                    for (i = 0, ii = selectedScopes.length; i < ii; ++i) {
+                        var selected = getBlockNodes(selectedElements[i].clone);
+                        selectedScopes[i].$destroy();
+                        var promise = previousLeaveAnimations[i] = $animate.leave(selected);
+                        promise.then(spliceFactory(previousLeaveAnimations, i));
+                    }
+
+                    selectedElements.length = 0;
+                    selectedScopes.length = 0;
+
+                    if ((selectedTranscludes = ngSwitchController.cases['!' + value] || ngSwitchController.cases['?'])) {
+                        forEach(selectedTranscludes, function (selectedTransclude) {
+                            selectedTransclude.transclude(function (caseElement, selectedScope) {
+                                selectedScopes.push(selectedScope);
+                                var anchor = selectedTransclude.element;
+                                caseElement[caseElement.length++] = document.createComment(' end ngSwitchWhen: ');
+                                var block = {clone: caseElement};
+
+                                selectedElements.push(block);
+                                $animate.enter(caseElement, anchor.parent(), anchor);
+                            });
+                        });
+                    }
+                };
+
+
+                scope.$watch(function(){
+                    var variants = window.variants;
+                    if(variants == undefined){
+                        return undefined;
+                    }
+                    var value = variants[experimentName];
+                    if(value == undefined){
+                        return undefined;
+                    }
+                    return value;
+                }, ngSwitchWatchAction);
+            }
+        };
+    }).directive('variantSwitchWhen', function () {
+        return {
+            transclude: 'element',
+            priority: 1200,
+            require: '^variantSwitch',
+            multiElement: true,
+            link: function (scope, element, attrs, ctrl, $transclude) {
+                ctrl.cases['!' + attrs.variantSwitchWhen] = (ctrl.cases['!' + attrs.variantSwitchWhen] || []);
+                ctrl.cases['!' + attrs.variantSwitchWhen].push({transclude: $transclude, element: element});
+            }
+        }
+    }).directive('variantSwitchDefault', function () {
+        return {
+            transclude: 'element',
+            priority: 1200,
+            require: '^variantSwitch',
+            multiElement: true,
+            link: function (scope, element, attr, ctrl, $transclude) {
+                ctrl.cases['?'] = (ctrl.cases['?'] || []);
+                ctrl.cases['?'].push({transclude: $transclude, element: element});
+            }
+        }
+    });
