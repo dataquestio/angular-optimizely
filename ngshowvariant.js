@@ -44,6 +44,20 @@ angular.module('ngshowvariant').directive('variantSwitch', function ($animate, $
                     };
                 };
 
+                var getBlockNodes = function(nodes) {
+                  var node = nodes[0];
+                  var endNode = nodes[nodes.length - 1];
+                  var blockNodes = [node];
+
+                  do {
+                    node = node.nextSibling;
+                    if (!node) break;
+                    blockNodes.push(node);
+                  } while (node !== endNode);
+
+                  return $(blockNodes);
+                };
+
                 var ngSwitchWatchAction = function(value) {
                     var i, ii;
                     for (i = 0, ii = previousLeaveAnimations.length; i < ii; ++i) {
