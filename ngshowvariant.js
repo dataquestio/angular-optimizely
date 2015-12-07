@@ -76,7 +76,7 @@ angular.module('ngshowvariant').directive('variantSwitch', function ($animate, $
                     selectedScopes.length = 0;
 
                     if ((selectedTranscludes = ngSwitchController.cases['!' + value] || ngSwitchController.cases['?'])) {
-                        forEach(selectedTranscludes, function (selectedTransclude) {
+                        angular.forEach(selectedTranscludes, function (selectedTransclude) {
                             selectedTransclude.transclude(function (caseElement, selectedScope) {
                                 selectedScopes.push(selectedScope);
                                 var anchor = selectedTransclude.element;
